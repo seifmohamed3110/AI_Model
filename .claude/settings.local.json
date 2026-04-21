@@ -4,7 +4,8 @@
       "Bash(flutter pub *)",
       "Bash(python -c \"import flask; import fitz; import docx; import sklearn; print\\('Dependencies OK'\\)\")",
       "Bash(dir models *)",
-      "Bash(curl -s http://localhost:5000/health)"
+      "Bash(curl -s http://localhost:5000/health)",
+      "Bash(python *)"
     ]
   }
 }

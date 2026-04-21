@@ -11,7 +11,7 @@ Endpoints:
     GET  /health         — health check
 
 Run:
-    flask --app app run --port 5000 --no-reload
+    flask --app app run --port 5001 --no-reload
 """
 
 import os
@@ -25,7 +25,7 @@ from modules.career      import detect_field
 from modules.scorer      import score_resume
 from modules.ats         import check_ats
 from modules.writing     import check_writing
-from modules.suggestions import get_suggestions, get_jd_match
+from modules.suggestions import get_suggestions_detailed, get_jd_match
 
 load_dotenv()
 
@@ -50,7 +50,7 @@ def index():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({"status": "ok"}), 200
+    return jsonify({"status": "ok", "models_loaded": True}), 200
 
 
 @app.route("/analyze", methods=["POST"])
@@ -88,24 +88,31 @@ def analyze():
         score_result   = score_resume(features)
         ats_issues     = check_ats(text)
         writing_issues = check_writing(text)
-        improvements   = get_suggestions(features, detected_field)
+        suggestion_buckets = get_suggestions_detailed(features, detected_field)
 
         jd_result = None
         if jd_text and jd_text.strip():
             jd_result = get_jd_match(text, jd_text)
 
         response = {
+            # Core analysis metadata
             "score":            score_result["score"],
-            "grade":            score_result["grade_label"],
+            "grade":            score_result["grade_label"].lower(),
             "word_count":       features["word_count"],
             "detected_field":   detected_field,
             "summary":          score_result["summary"],
             "strong_points":    score_result["strong_points"],
-            "quick_wins":       score_result["quick_wins"],
             "missing_sections": score_result["missing_sections"],
+
+            # Final output structure (Phase 8)
+            "critical_issues":             suggestion_buckets["critical_issues"],
+            "quick_wins":                  suggestion_buckets["quick_wins"],
+            "field_specific_improvements": suggestion_buckets["field_specific_improvements"],
             "ats_issues":       ats_issues,
             "writing_issues":   writing_issues,
-            "improvements":     improvements,
+
+            # Backward-compatible aggregate list for existing UI
+            "improvements": suggestion_buckets["all_suggestions"],
         }
 
         if jd_result:

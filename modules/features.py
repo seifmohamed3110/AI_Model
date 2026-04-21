@@ -140,6 +140,8 @@ def extract_features(text: str) -> dict:
     has_education    = int("education" in found_sections)
     has_skills       = int("skills" in found_sections)
     has_certifications = int("certifications" in found_sections)
+    has_projects     = int("projects" in found_sections)
+    has_achievements = int(any(s in found_sections for s in ["achievements", "awards"]))
 
     # ── Bullet points ────────────────────────────────────────────────────────
     bullet_lines = [l for l in non_empty_lines if _is_bullet_line(l)]
@@ -187,6 +189,8 @@ def extract_features(text: str) -> dict:
         "has_education":         has_education,
         "has_skills":            has_skills,
         "has_certifications":    has_certifications,
+        "has_projects":          has_projects,
+        "has_achievements":      has_achievements,
         "bullet_count":          bullet_count,
         "avg_bullet_length":     round(avg_bullet_length, 2),
         "first_person_count":    first_person_count,
@@ -198,3 +202,27 @@ def extract_features(text: str) -> dict:
         "quantification_count":  quantification_count,
         "action_verb_count":     action_verb_count,
     }
+
+
+def detect_content_gaps(features: dict, field: str) -> dict:
+    """
+    Detect personalization gaps used by suggestions ranking logic.
+    """
+    normalized_field = (field or "other").strip().lower()
+    if normalized_field not in {"tech", "marketing", "creative", "business", "other"}:
+        normalized_field = "other"
+
+    gaps = {
+        "no_github": False,
+        "no_portfolio": False,
+        "no_metrics": features.get("quantification_count", 0) < 2,
+        "no_projects": not bool(features.get("has_projects", 0)),
+        "no_achievements": not bool(features.get("has_achievements", 0)),
+    }
+
+    if normalized_field == "tech":
+        gaps["no_github"] = not bool(features.get("has_github", 0))
+    if normalized_field in {"creative", "marketing"}:
+        gaps["no_portfolio"] = not bool(features.get("has_portfolio", 0))
+
+    return gaps
