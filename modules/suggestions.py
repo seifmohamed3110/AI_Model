@@ -4,6 +4,7 @@ modules/suggestions.py
 Responsibilities:
 - Accept feature dictionary and detected career field
 - Return ranked, field-specific improvement suggestions
+- Generate personalized strengths
 - Never penalize creative/media resumes for missing GitHub
 - Never penalize non-tech resumes for missing technical skills
 - Limit generic suggestions to top 3-4, boost field-specific ones
@@ -17,7 +18,6 @@ from modules.features import detect_content_gaps
 
 # ── Suggestion weights (importance ranking) ───────────────────────────────────
 WEIGHTS = {
-    # Critical (weight 10) - Missing core information
     "missing_email": 10,
     "missing_phone": 10,
     "missing_summary": 10,
@@ -25,7 +25,6 @@ WEIGHTS = {
     "missing_education": 10,
     "missing_skills": 10,
 
-    # High (weight 7) - Important but not blocking
     "missing_linkedin": 7,
     "missing_github_tech": 7,
     "missing_portfolio_creative": 7,
@@ -33,7 +32,6 @@ WEIGHTS = {
     "no_quantification": 7,
     "too_short": 7,
 
-    # Medium (weight 4) - Quality improvements
     "few_bullets": 4,
     "weak_verbs": 4,
     "filler_phrases": 4,
@@ -46,70 +44,183 @@ WEIGHTS = {
     "missing_certifications": 4,
     "low_quantification": 4,
 
-    # Low (weight 2) - Minor polish
     "needs_more_quantification": 2,
 }
 
-# ── Field-specific suggestion templates ──────────────────────────────────────
-FIELD_SUGGESTIONS = {
-    "tech": [
-        ("missing_github_tech", "Add your GitHub profile URL — essential for tech roles, recruiters will check your code"),
-        ("few_tech_skills", "Expand your Skills section with more specific technologies — languages, frameworks, cloud platforms, and tools"),
-        ("missing_certifications_tech", "Consider adding relevant certifications — AWS, GCP, Azure, or language-specific certs strengthen a tech resume"),
-        ("low_quantification_tech", "Add technical impact metrics — e.g. 'Reduced API response time by 40%' or 'Scaled system to 1M users'"),
-    ],
-    "marketing": [
-        ("few_marketing_skills", "Add more marketing tools and platforms to your Skills section — Google Analytics, HubSpot, SEO, SEM, etc."),
-        ("missing_certifications_marketing", "Add marketing certifications — Google Analytics, Google Ads, HubSpot, or Meta Blueprint are highly valued"),
-        ("low_quantification_marketing", "Marketing resumes need strong metrics — add conversion rates, ROI figures, campaign reach, and revenue impact"),
-        ("missing_portfolio_marketing", "Add a link to your portfolio or campaign samples — marketing roles expect to see your work"),
-    ],
-    "creative": [
-        ("missing_portfolio_creative", "Add a portfolio link — essential for creative roles. Use Behance, Dribbble, or your own site"),
-        ("few_creative_skills", "List the specific tools you use — Figma, Photoshop, Illustrator, After Effects, Premiere Pro, etc."),
-        ("low_quantification_creative", "Add impact metrics even for creative work — e.g. 'Redesign increased user engagement by 25%' or 'Delivered 50+ brand assets'"),
-    ],
-    "business": [
-        ("few_business_skills", "Add business-specific keywords — project management, stakeholder management, P&L, forecasting, etc."),
-        ("low_quantification_business", "Business resumes need financial and operational metrics — revenue figures, cost savings, team sizes, budget managed"),
-        ("missing_certifications_business", "Consider adding business certifications — PMP, Six Sigma, CPA, CFA, or MBA strengthen a business resume"),
-    ],
-    "other": [
-        ("low_quantification_other", "Add measurable achievements specific to your field — patient counts, student outcomes, cases handled, etc."),
-        ("missing_certifications_other", "Add any relevant licenses or certifications for your field"),
-    ],
-}
 
 # ── Universal suggestion templates ───────────────────────────────────────────
 UNIVERSAL_SUGGESTIONS = [
-    ("missing_email", "Add your email address — it is required contact information"),
-    ("missing_phone", "Add your phone number — recruiters need a way to contact you"),
-    ("missing_linkedin", "Add your LinkedIn profile URL — most recruiters check LinkedIn before calling"),
-    ("missing_summary", "Add a Summary or Profile section at the top — give recruiters a 3-sentence overview of who you are"),
-    ("missing_experience", "Add an Experience section with your work history"),
-    ("missing_education", "Add an Education section listing your degrees and institutions"),
-    ("missing_skills", "Add a Skills section — ATS systems scan for keywords here"),
-    ("too_short", "Your resume is too short — aim for at least 400 words to give enough context"),
-    ("few_bullets", "Use bullet points to list your achievements — they are easier to scan than paragraphs"),
-    ("no_quantification", "Add quantified achievements — numbers make your impact concrete, e.g. 'Increased sales by 30%'"),
-    ("low_quantification", "Add more quantified achievements — aim for at least 3 metrics across your experience"),
-    ("weak_verbs", "Start bullet points with strong action verbs like Led, Built, Delivered, Optimized"),
-    ("filler_phrases", "Remove filler phrases like 'responsible for' and 'worked on' — replace with direct action verbs"),
-    ("first_person", "Remove first-person pronouns — write 'Led a team of 5' not 'I led a team of 5'"),
-    ("long_bullets", "Shorten your bullet points — aim for 15-20 words each, focus on the outcome not the process"),
+    ("missing_email", "Add your email address — it is required contact information."),
+    ("missing_phone", "Add your phone number — recruiters need a direct way to contact you."),
+    ("missing_linkedin", "Add your LinkedIn profile URL — many recruiters check LinkedIn before reaching out."),
+    ("missing_summary", "Add a short Summary or Profile section at the top to explain your background and value."),
+    ("missing_experience", "Add an Experience section with your work history."),
+    ("missing_education", "Add an Education section listing your degrees and institutions."),
+    ("missing_skills", "Add a Skills section — ATS systems often scan it for important keywords."),
+    ("too_short", "Your resume is too short — add more relevant detail so your experience and impact is clear."),
+    ("few_bullets", "Use more bullet points to present achievements clearly and improve readability."),
+    ("no_quantification", "Add measurable achievements — numbers make your impact easier to understand."),
+    ("low_quantification", "Add more measurable results across your experience so your impact is clearer."),
+    ("weak_verbs", "Start bullet points with stronger action verbs such as Led, Built, Improved, Delivered, or Optimized."),
+    ("filler_phrases", "Replace filler phrases like 'responsible for' with direct action and outcome-focused language."),
+    ("first_person", "Remove first-person pronouns — write 'Led a team of 5' instead of 'I led a team of 5'."),
+    ("long_bullets", "Shorten long bullet points so each one focuses on one action and one result."),
 ]
+
+
+def _field_skills_text(field: str) -> str:
+    field = (field or "other").strip().lower()
+
+    if field == "tech":
+        return "Expand your Skills section with more specific technologies — programming languages, frameworks, databases, cloud tools, and platforms."
+    if field == "marketing":
+        return "Add more marketing tools and channel-specific skills — analytics, campaign platforms, CRM tools, content tools, and reporting tools."
+    if field == "creative":
+        return "List the specific tools and creative skills you use — design software, editing tools, prototyping tools, and creative workflows."
+    if field == "business":
+        return "Add more business-specific keywords — planning, reporting, stakeholder coordination, budgeting, operations, and process improvement."
+    return "Add more role-specific skills and keywords so the resume reflects your target field more clearly."
+
+
+def _field_quantification_text(field: str) -> str:
+    field = (field or "other").strip().lower()
+
+    if field == "tech":
+        return "Add technical impact metrics — for example, speed improvements, scale handled, uptime, delivery time, or cost savings."
+    if field == "marketing":
+        return "Add marketing performance metrics — for example, conversion rate, engagement, growth, campaign reach, lead volume, or return on spend."
+    if field == "creative":
+        return "Add creative impact where possible — for example, engagement gains, faster delivery, improved user response, or number of assets delivered."
+    if field == "business":
+        return "Add business impact metrics — for example, revenue impact, cost reduction, budget handled, team size, or process efficiency gains."
+    return "Add measurable achievements specific to your field so your impact is easier to understand."
+
+
+def _field_portfolio_text(field: str) -> str:
+    field = (field or "other").strip().lower()
+
+    if field == "creative":
+        return "Add a portfolio link — essential for creative roles. Use a portfolio site or a professional platform that shows your work clearly."
+    if field == "marketing":
+        return "Add a link to campaign samples, case studies, or a portfolio — marketing roles often benefit from visible work examples."
+    return "Add a portfolio or work-sample link if your target role benefits from visible examples of your work."
+
+
+def _field_certification_text(field: str) -> str:
+    field = (field or "other").strip().lower()
+
+    if field == "tech":
+        return "If relevant to your target role, add one or two recognized technical certifications to strengthen credibility."
+    if field == "marketing":
+        return "If relevant to your target role, add one or two recognized marketing certifications to strengthen credibility."
+    if field == "business":
+        return "If relevant to your target role, add one or two recognized professional certifications to strengthen credibility."
+    return "If your field values licenses or certifications, add the most relevant ones to strengthen credibility."
+
+
+def _should_suggest_certifications(features: dict, field: str) -> bool:
+    """
+    Decide whether a certification suggestion is relevant enough to show.
+    """
+    if features.get("has_certifications"):
+        return False
+
+    field = (field or "other").strip().lower()
+
+    if field == "tech":
+        return (
+            features.get("tech_skill_count", 0) >= 4
+            or features.get("has_projects", 0)
+            or features.get("has_github", 0)
+        )
+
+    if field == "marketing":
+        return features.get("marketing_skill_count", 0) >= 3
+
+    if field == "business":
+        return features.get("business_skill_count", 0) >= 3
+
+    if field == "other":
+        return features.get("word_count", 0) >= 250
+
+    return False
+
+
+def get_strengths(features: dict, field: str) -> List[str]:
+    """
+    Generate personalized strengths based on resume features and detected field.
+    """
+    field = (field or "other").strip().lower()
+    strengths = []
+
+    if features.get("has_email") and features.get("has_phone"):
+        strengths.append("Contact information is complete and easy to find.")
+
+    if features.get("has_linkedin"):
+        strengths.append("LinkedIn profile is included.")
+
+    if features.get("section_count", 0) >= 4:
+        strengths.append("Resume has a clear and organized section structure.")
+
+    if features.get("bullet_count", 0) >= 5:
+        strengths.append("Bullet points are used effectively for readability.")
+
+    if features.get("quantification_count", 0) >= 2:
+        strengths.append("Includes quantified achievements that make results more concrete.")
+
+    if features.get("action_verb_count", 0) >= 5:
+        strengths.append("Uses strong action-oriented language.")
+
+    if features.get("has_projects"):
+        strengths.append("Projects section adds practical evidence of skills.")
+
+    if features.get("has_achievements"):
+        strengths.append("Achievements section helps highlight accomplishments.")
+
+    if features.get("word_count", 0) >= 300:
+        strengths.append("Resume provides a solid amount of detail.")
+
+    if field == "tech":
+        if features.get("has_github"):
+            strengths.append("GitHub profile is included, which is valuable for tech roles.")
+        if features.get("tech_skill_count", 0) >= 5:
+            strengths.append("Shows strong technical keyword coverage for tech roles.")
+
+    elif field == "marketing":
+        if features.get("has_portfolio"):
+            strengths.append("Portfolio or campaign samples are included, which strengthens marketing credibility.")
+        if features.get("marketing_skill_count", 0) >= 4:
+            strengths.append("Shows relevant marketing tool and strategy coverage.")
+
+    elif field == "creative":
+        if features.get("has_portfolio"):
+            strengths.append("Portfolio link is included, which is especially important for creative roles.")
+        if features.get("creative_skill_count", 0) >= 4:
+            strengths.append("Highlights relevant creative tools and design-related skills.")
+
+    elif field == "business":
+        if features.get("business_skill_count", 0) >= 4:
+            strengths.append("Demonstrates strong business-oriented keyword coverage.")
+
+    unique = []
+    seen = set()
+    for s in strengths:
+        if s not in seen:
+            unique.append(s)
+            seen.add(s)
+
+    return unique[:4]
 
 
 def _get_suggestions_with_scores(features: dict, field: str) -> List[Tuple[str, str, int]]:
     """
     Generate suggestions with importance scores.
-
     Returns: List of (suggestion_id, suggestion_text, weight) tuples
     """
     suggestions = []
-    field = field.lower().strip()
+    field = (field or "other").strip().lower()
 
-    # ── Universal suggestions ────────────────────────────────────────────────
+    # Universal suggestions
     if not features.get("has_email"):
         suggestions.append(("missing_email", UNIVERSAL_SUGGESTIONS[0][1], WEIGHTS["missing_email"]))
 
@@ -154,48 +265,48 @@ def _get_suggestions_with_scores(features: dict, field: str) -> List[Tuple[str, 
     if features.get("avg_bullet_length", 0) > 30:
         suggestions.append(("long_bullets", UNIVERSAL_SUGGESTIONS[14][1], WEIGHTS["long_bullets"]))
 
-    # ── Field-specific suggestions ───────────────────────────────────────────
+    # Field-specific suggestions
     if field == "tech":
         if not features.get("has_github"):
-            suggestions.append(("missing_github_tech", FIELD_SUGGESTIONS["tech"][0][1], WEIGHTS["missing_github_tech"]))
+            suggestions.append(("missing_github_tech", "Add your GitHub profile URL — essential for tech roles, recruiters often review code samples or project repositories.", WEIGHTS["missing_github_tech"]))
         if features.get("tech_skill_count", 0) < 5:
-            suggestions.append(("few_tech_skills", FIELD_SUGGESTIONS["tech"][1][1], WEIGHTS["few_tech_skills"]))
-        if not features.get("has_certifications"):
-            suggestions.append(("missing_certifications_tech", FIELD_SUGGESTIONS["tech"][2][1], WEIGHTS["missing_certifications"]))
+            suggestions.append(("few_tech_skills", _field_skills_text(field), WEIGHTS["few_tech_skills"]))
+        if _should_suggest_certifications(features, field):
+            suggestions.append(("missing_certifications_tech", _field_certification_text(field), WEIGHTS["missing_certifications"]))
         if features.get("quantification_count", 0) < 2:
-            suggestions.append(("low_quantification_tech", FIELD_SUGGESTIONS["tech"][3][1], WEIGHTS["low_quantification"]))
+            suggestions.append(("low_quantification_tech", _field_quantification_text(field), WEIGHTS["low_quantification"]))
 
     elif field == "marketing":
         if features.get("marketing_skill_count", 0) < 4:
-            suggestions.append(("few_marketing_skills", FIELD_SUGGESTIONS["marketing"][0][1], WEIGHTS["few_marketing_skills"]))
-        if not features.get("has_certifications"):
-            suggestions.append(("missing_certifications_marketing", FIELD_SUGGESTIONS["marketing"][1][1], WEIGHTS["missing_certifications"]))
+            suggestions.append(("few_marketing_skills", _field_skills_text(field), WEIGHTS["few_marketing_skills"]))
+        if _should_suggest_certifications(features, field):
+            suggestions.append(("missing_certifications_marketing", _field_certification_text(field), WEIGHTS["missing_certifications"]))
         if features.get("quantification_count", 0) < 3:
-            suggestions.append(("low_quantification_marketing", FIELD_SUGGESTIONS["marketing"][2][1], WEIGHTS["low_quantification"]))
+            suggestions.append(("low_quantification_marketing", _field_quantification_text(field), WEIGHTS["low_quantification"]))
         if not features.get("has_portfolio"):
-            suggestions.append(("missing_portfolio_marketing", FIELD_SUGGESTIONS["marketing"][3][1], WEIGHTS["missing_portfolio_marketing"]))
+            suggestions.append(("missing_portfolio_marketing", _field_portfolio_text(field), WEIGHTS["missing_portfolio_marketing"]))
 
     elif field == "creative":
         if not features.get("has_portfolio"):
-            suggestions.append(("missing_portfolio_creative", FIELD_SUGGESTIONS["creative"][0][1], WEIGHTS["missing_portfolio_creative"]))
+            suggestions.append(("missing_portfolio_creative", _field_portfolio_text(field), WEIGHTS["missing_portfolio_creative"]))
         if features.get("creative_skill_count", 0) < 4:
-            suggestions.append(("few_creative_skills", FIELD_SUGGESTIONS["creative"][1][1], WEIGHTS["few_creative_skills"]))
+            suggestions.append(("few_creative_skills", _field_skills_text(field), WEIGHTS["few_creative_skills"]))
         if features.get("quantification_count", 0) < 2:
-            suggestions.append(("low_quantification_creative", FIELD_SUGGESTIONS["creative"][2][1], WEIGHTS["low_quantification"]))
+            suggestions.append(("low_quantification_creative", _field_quantification_text(field), WEIGHTS["low_quantification"]))
 
     elif field == "business":
         if features.get("business_skill_count", 0) < 4:
-            suggestions.append(("few_business_skills", FIELD_SUGGESTIONS["business"][0][1], WEIGHTS["few_business_skills"]))
+            suggestions.append(("few_business_skills", _field_skills_text(field), WEIGHTS["few_business_skills"]))
         if features.get("quantification_count", 0) < 3:
-            suggestions.append(("low_quantification_business", FIELD_SUGGESTIONS["business"][1][1], WEIGHTS["low_quantification"]))
-        if not features.get("has_certifications"):
-            suggestions.append(("missing_certifications_business", FIELD_SUGGESTIONS["business"][2][1], WEIGHTS["missing_certifications"]))
+            suggestions.append(("low_quantification_business", _field_quantification_text(field), WEIGHTS["low_quantification"]))
+        if _should_suggest_certifications(features, field):
+            suggestions.append(("missing_certifications_business", _field_certification_text(field), WEIGHTS["missing_certifications"]))
 
     elif field == "other":
         if features.get("quantification_count", 0) < 2:
-            suggestions.append(("low_quantification_other", FIELD_SUGGESTIONS["other"][0][1], WEIGHTS["low_quantification"]))
-        if not features.get("has_certifications"):
-            suggestions.append(("missing_certifications_other", FIELD_SUGGESTIONS["other"][1][1], WEIGHTS["missing_certifications"]))
+            suggestions.append(("low_quantification_other", _field_quantification_text(field), WEIGHTS["low_quantification"]))
+        if _should_suggest_certifications(features, field):
+            suggestions.append(("missing_certifications_other", _field_certification_text(field), WEIGHTS["missing_certifications"]))
 
     return suggestions
 
@@ -203,16 +314,7 @@ def _get_suggestions_with_scores(features: dict, field: str) -> List[Tuple[str, 
 def get_suggestions(features: dict, field: str, limit: int = 7) -> List[str]:
     """
     Generate ranked, field-specific improvement suggestions.
-
-    Args:
-        features: dictionary from extract_features()
-        field: one of tech, marketing, creative, business, other
-        limit: maximum number of suggestions to return (default 7)
-
-    Returns:
-        list of suggestion strings ordered by importance, limited to top N
     """
-    # Get all suggestions with scores
     scored_suggestions = _get_suggestions_with_scores(features, field)
 
     if not scored_suggestions:
@@ -228,7 +330,6 @@ def get_suggestions(features: dict, field: str, limit: int = 7) -> List[str]:
         if is_field_specific:
             weight += 3
 
-        # Gap-aware personalization boost
         if gaps["no_metrics"] and "quantification" in sug_id:
             weight += 2
         if gaps["no_projects"] and "projects" in text.lower():
@@ -244,11 +345,8 @@ def get_suggestions(features: dict, field: str, limit: int = 7) -> List[str]:
 
     boosted.sort(key=lambda x: x[2], reverse=True)
 
-    # Remove duplicates by normalized text first, then by id.
-    # This deduplicates overlap across quick_wins/improvements/ATS/writing buckets.
     seen_ids = set()
     seen_texts = set()
-    seen = set()
     unique_suggestions = []
     for sug_id, text, weight, is_field_specific in boosted:
         norm_text = " ".join(text.lower().split())
@@ -256,33 +354,24 @@ def get_suggestions(features: dict, field: str, limit: int = 7) -> List[str]:
             continue
         seen_ids.add(sug_id)
         seen_texts.add(norm_text)
-        seen.add(sug_id)
         unique_suggestions.append((sug_id, text, weight, is_field_specific))
 
-    # Limit generic suggestions to top 3-4 while preserving critical gaps
     field_first = [s for s in unique_suggestions if s[3]]
     generic = [s for s in unique_suggestions if not s[3]]
     top_suggestions = (field_first + generic[:generic_limit])[:limit]
 
-    # Return just the text
     return [text for _, text, _, _ in top_suggestions]
 
 
 def get_suggestions_detailed(features: dict, field: str) -> dict:
     """
     Generate ranked suggestions with metadata.
-
-    Args:
-        features: dictionary from extract_features()
-        field: one of tech, marketing, creative, business, other
-
-    Returns:
-        dict with critical_issues, quick_wins, field_specific_improvements, all_suggestions
     """
     scored_suggestions = _get_suggestions_with_scores(features, field)
 
     if not scored_suggestions:
         return {
+            "strengths": get_strengths(features, field),
             "critical_issues": [],
             "quick_wins": [],
             "field_specific_improvements": [],
@@ -293,6 +382,7 @@ def get_suggestions_detailed(features: dict, field: str) -> dict:
     gaps = detect_content_gaps(features, field)
     generic_limit = 4
     boosted = []
+
     for sug_id, text, weight in scored_suggestions:
         is_field_specific = any(kw in sug_id for kw in field_keywords)
         if is_field_specific:
@@ -307,6 +397,7 @@ def get_suggestions_detailed(features: dict, field: str) -> dict:
             weight += 2
         if gaps["no_portfolio"] and "portfolio" in sug_id:
             weight += 2
+
         boosted.append({
             "id": sug_id,
             "text": text,
@@ -314,8 +405,8 @@ def get_suggestions_detailed(features: dict, field: str) -> dict:
             "is_field_specific": is_field_specific
         })
 
-    # Re-sort and deduplicate
     boosted.sort(key=lambda x: x["weight"], reverse=True)
+
     seen = set()
     seen_texts = set()
     unique = []
@@ -335,6 +426,7 @@ def get_suggestions_detailed(features: dict, field: str) -> dict:
     quick_wins = [s for s in unique if 5 <= s["weight"] < 10][:3]
 
     return {
+        "strengths": get_strengths(features, field),
         "critical_issues": [s["text"] for s in critical],
         "quick_wins": [s["text"] for s in quick_wins],
         "field_specific_improvements": [s["text"] for s in field_specific],
@@ -346,20 +438,11 @@ def get_jd_match(resume_text: str, jd_text: str) -> dict:
     """
     Compare resume text against a job description.
     Returns match score and list of missing keywords.
-
-    Args:
-        resume_text: clean resume text
-        jd_text: job description text pasted by user
-
-    Returns:
-        dict with match_score (0-100) and missing_keywords list
     """
     import re
 
     def extract_keywords(text: str) -> set:
-        """Extract meaningful keywords from text."""
         text_lower = text.lower()
-        # Remove common stop words
         stop_words = {
             "the", "and", "for", "are", "with", "this", "that", "have",
             "will", "you", "your", "our", "their", "from", "been", "was",
@@ -372,18 +455,16 @@ def get_jd_match(resume_text: str, jd_text: str) -> dict:
         return {w for w in words if w not in stop_words}
 
     resume_keywords = extract_keywords(resume_text)
-    jd_keywords     = extract_keywords(jd_text)
+    jd_keywords = extract_keywords(jd_text)
 
     if not jd_keywords:
         return {"match_score": 0, "missing_keywords": []}
 
-    matched  = resume_keywords.intersection(jd_keywords)
-    missing  = jd_keywords - resume_keywords
+    matched = resume_keywords.intersection(jd_keywords)
+    missing = jd_keywords - resume_keywords
 
     match_score = round(len(matched) / len(jd_keywords) * 100, 1)
 
-    # Return only the most meaningful missing keywords
-    # Filter out very common words and sort by length (longer = more specific)
     meaningful_missing = sorted(
         [w for w in missing if len(w) > 4],
         key=len,
@@ -391,6 +472,6 @@ def get_jd_match(resume_text: str, jd_text: str) -> dict:
     )[:20]
 
     return {
-        "match_score":      match_score,
+        "match_score": match_score,
         "missing_keywords": meaningful_missing,
     }

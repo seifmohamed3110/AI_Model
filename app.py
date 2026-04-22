@@ -19,13 +19,8 @@ import tempfile
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 
-from modules.extractor   import extract_text
-from modules.features    import extract_features
-from modules.career      import detect_field
-from modules.scorer      import score_resume
-from modules.ats         import check_ats
-from modules.writing     import check_writing
-from modules.suggestions import get_suggestions_detailed, get_jd_match
+from modules.extractor import extract_text
+from modules.results import build_resume_result
 
 load_dotenv()
 
@@ -67,10 +62,11 @@ def analyze():
         return jsonify({"error": "Only PDF and DOCX files are supported"}), 400
 
     user_field = request.form.get("field", None)
-    jd_text    = request.form.get("job_description", None)
+    jd_text = request.form.get("job_description", None)
 
     suffix = "." + file.filename.rsplit(".", 1)[1].lower()
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+
     try:
         file.save(tmp.name)
         tmp.close()
@@ -83,43 +79,13 @@ def analyze():
         if len(text.strip()) < 50:
             return jsonify({"error": "Could not extract enough text from file"}), 422
 
-        features       = extract_features(text)
-        detected_field = detect_field(text, user_override=user_field)
-        score_result   = score_resume(features)
-        ats_issues     = check_ats(text)
-        writing_issues = check_writing(text)
-        suggestion_buckets = get_suggestions_detailed(features, detected_field)
+        result = build_resume_result(
+            text=text,
+            user_field=user_field,
+            jd_text=jd_text,
+        )
 
-        jd_result = None
-        if jd_text and jd_text.strip():
-            jd_result = get_jd_match(text, jd_text)
-
-        response = {
-            # Core analysis metadata
-            "score":            score_result["score"],
-            "grade":            score_result["grade_label"].lower(),
-            "word_count":       features["word_count"],
-            "detected_field":   detected_field,
-            "summary":          score_result["summary"],
-            "strong_points":    score_result["strong_points"],
-            "missing_sections": score_result["missing_sections"],
-
-            # Final output structure (Phase 8)
-            "critical_issues":             suggestion_buckets["critical_issues"],
-            "quick_wins":                  suggestion_buckets["quick_wins"],
-            "field_specific_improvements": suggestion_buckets["field_specific_improvements"],
-            "ats_issues":       ats_issues,
-            "writing_issues":   writing_issues,
-
-            # Backward-compatible aggregate list for existing UI
-            "improvements": suggestion_buckets["all_suggestions"],
-        }
-
-        if jd_result:
-            response["jd_match_score"]   = jd_result["match_score"]
-            response["missing_keywords"] = jd_result["missing_keywords"]
-
-        return jsonify(response), 200
+        return jsonify(result), 200
 
     finally:
         try:
@@ -130,5 +96,5 @@ def analyze():
 
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    port  = int(os.getenv("PORT", 5001))
+    port = int(os.getenv("PORT", 5001))
     app.run(debug=debug, port=port, use_reloader=False)

@@ -4,7 +4,7 @@ modules/scorer.py
 Responsibilities:
 - Load scorer_model.pkl once at import time
 - Accept a feature dictionary from features.py
-- Return a numeric score 0-100, grade label, and summary
+- Return a numeric score 0-100, grade label, summary, confidence, and missing sections
 
 No Flask. No training. No file I/O beyond loading the model.
 """
@@ -13,16 +13,19 @@ import os
 import pickle
 import numpy as np
 
+
 # ── Paths ────────────────────────────────────────────────────────────────────
-BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "scorer_model.pkl")
+
 
 # ── Load model once at import time ────────────────────────────────────────────
 with open(MODEL_PATH, "rb") as f:
     _PAYLOAD = pickle.load(f)
 
-_MODEL         = _PAYLOAD["model"]
+_MODEL = _PAYLOAD["model"]
 _FEATURE_NAMES = _PAYLOAD["feature_names"]
+
 
 # ── Grade definitions ─────────────────────────────────────────────────────────
 GRADE_LABELS = {
@@ -32,9 +35,9 @@ GRADE_LABELS = {
 }
 
 GRADE_SUMMARIES = {
-    0: "This resume needs significant improvement. Focus on adding measurable achievements, fixing structure, and removing weak language.",
-    1: "This resume is functional but has room to improve. Strengthen your bullet points, add more quantified results, and ensure all key sections are present.",
-    2: "This is a strong resume. Minor polish and field-specific tweaks can push it further.",
+    0: "This resume needs significant improvement. Focus on stronger structure, clearer bullet points, and more measurable achievements.",
+    1: "This resume is functional but still has room to improve. Strengthen impact, keyword coverage, and consistency.",
+    2: "This is a strong resume overall. Minor polishing and role-specific improvements can make it even better.",
 }
 
 
@@ -57,13 +60,13 @@ def _grade_to_score(grade: int, features: dict) -> float:
         2 (strong)  → 70 – 100
     """
     bands = {
-        0: (5,  39),
+        0: (5, 39),
         1: (40, 69),
         2: (70, 98),
     }
     low, high = bands[grade]
 
-    # Use a few key features to position within the band
+    # Signals used only to place the score inside the grade band
     signals = [
         min(features.get("word_count", 0) / 600, 1.0),
         features.get("has_email", 0),
@@ -77,64 +80,17 @@ def _grade_to_score(grade: int, features: dict) -> float:
         max(0, 1 - features.get("first_person_count", 0) / 5),
     ]
 
-    # Average signal positions the score within the band
     signal_avg = sum(signals) / len(signals)
     score = low + signal_avg * (high - low)
     return round(float(score), 1)
 
 
-def score_resume(features: dict) -> dict:
+def _get_missing_sections(features: dict) -> list:
     """
-    Takes a feature dictionary from extract_features().
-    Returns a dict with score, grade, grade_label, and summary.
+    Identify important missing resume sections.
     """
-    X = _features_to_array(features)
-    grade = int(_MODEL.predict(X)[0])
-    proba = _MODEL.predict_proba(X)[0]
-
-    score      = _grade_to_score(grade, features)
-    grade_label = GRADE_LABELS[grade]
-    summary    = GRADE_SUMMARIES[grade]
-    confidence = round(float(proba[grade]), 3)
-
-    # Identify strong points
-    strong_points = []
-    if features.get("has_email") and features.get("has_phone"):
-        strong_points.append("Contact information is complete")
-    if features.get("has_linkedin"):
-        strong_points.append("LinkedIn profile is present")
-    if features.get("quantification_count", 0) >= 2:
-        strong_points.append("Good use of quantified achievements")
-    if features.get("action_verb_count", 0) >= 5:
-        strong_points.append("Strong action verbs used throughout")
-    if features.get("bullet_count", 0) >= 5:
-        strong_points.append("Good use of bullet points")
-    if features.get("section_count", 0) >= 4:
-        strong_points.append("Resume has a clear section structure")
-    if features.get("word_count", 0) >= 300:
-        strong_points.append("Resume has good length and detail")
-
-    # Identify quick wins
-    quick_wins = []
-    if not features.get("has_email"):
-        quick_wins.append("Add your email address")
-    if not features.get("has_phone"):
-        quick_wins.append("Add your phone number")
-    if not features.get("has_linkedin"):
-        quick_wins.append("Add your LinkedIn URL")
-    if features.get("filler_count", 0) > 0:
-        quick_wins.append("Remove filler phrases like 'responsible for'")
-    if features.get("first_person_count", 0) > 2:
-        quick_wins.append("Remove first-person pronouns (I, me, my)")
-    if features.get("quantification_count", 0) == 0:
-        quick_wins.append("Add at least one quantified achievement (numbers, percentages)")
-    if features.get("bullet_count", 0) < 3:
-        quick_wins.append("Use bullet points to list your experience")
-    if features.get("word_count", 0) < 150:
-        quick_wins.append("Expand your resume — it is too short")
-
-    # Identify missing sections
     missing_sections = []
+
     if not features.get("has_summary"):
         missing_sections.append("Summary or Objective section")
     if not features.get("has_experience"):
@@ -144,13 +100,29 @@ def score_resume(features: dict) -> dict:
     if not features.get("has_skills"):
         missing_sections.append("Skills section")
 
+    return missing_sections
+
+
+def score_resume(features: dict) -> dict:
+    """
+    Takes a feature dictionary from extract_features().
+    Returns a dict with score, grade, grade_label, summary, confidence, and missing sections.
+    """
+    X = _features_to_array(features)
+    grade = int(_MODEL.predict(X)[0])
+    proba = _MODEL.predict_proba(X)[0]
+
+    score = _grade_to_score(grade, features)
+    grade_label = GRADE_LABELS[grade]
+    summary = GRADE_SUMMARIES[grade]
+    confidence = round(float(proba[grade]), 3)
+    missing_sections = _get_missing_sections(features)
+
     return {
-        "score":            score,
-        "grade":            grade,
-        "grade_label":      grade_label,
-        "summary":          summary,
-        "confidence":       confidence,
-        "strong_points":    strong_points,
-        "quick_wins":       quick_wins,
+        "score": score,
+        "grade": grade,
+        "grade_label": grade_label,
+        "summary": summary,
+        "confidence": confidence,
         "missing_sections": missing_sections,
     }
