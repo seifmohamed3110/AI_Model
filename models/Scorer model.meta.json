@@ -1,8 +1,15 @@
 {
   "model_id": "scorer_model",
+  "version": "1.0.0",
+  "commit_hash": "cd1d839",
   "description": "XGBoost classifier that predicts a resume's quality grade (weak / average / strong) from 27 hand-engineered structural and linguistic features.",
   "task": "multi-class classification",
   "target_column": "quality_label",
+  "package_versions": {
+    "python": "3.13.2",
+    "scikit_learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
   "label_map": {
     "0": "weak",
     "1": "average",
@@ -18,7 +25,8 @@
     "format": "pickle (dict with keys: model, feature_names)",
     "size_bytes": 1525454,
     "sha256": "0a2bbaf634fe6dccd664792676aa311ce3a9970a87a45e28b4130f71e01eff97",
-    "created_at": "2026-05-03T20:26:46"
+    "created_at": "2026-05-03T20:26:46",
+    "updated_at": "2026-05-03T20:26:46"
   },
   "input": {
     "type": "feature vector",
@@ -101,6 +109,38 @@
     "random_state": 42,
     "stratified": true,
     "class_imbalance_handling": "inverse-frequency sample weights per training example"
+  },
+  "evaluation_metrics": {
+    "status": "pending — run training/train_scorer.py and copy results from SCORER_EVALUATION_RESULTS.md",
+    "test_set_size": null,
+    "accuracy": null,
+    "macro_precision": null,
+    "macro_recall": null,
+    "macro_f1": null,
+    "per_class": {
+      "weak":    {"precision": null, "recall": null, "f1": null, "support": null},
+      "average": {"precision": null, "recall": null, "f1": null, "support": null},
+      "strong":  {"precision": null, "recall": null, "f1": null, "support": null}
+    },
+    "confusion_matrix": {
+      "labels": ["weak", "average", "strong"],
+      "matrix": null
+    },
+    "evaluation_script": "training/train_scorer.py",
+    "results_file": "SCORER_EVALUATION_RESULTS.md"
+  },
+  "evolution_metrics": {
+    "current_version": "1.0.0",
+    "history": [
+      {
+        "version": "1.0.0",
+        "trained_at": "2026-05-03T20:26:46",
+        "commit_hash": "cd1d839",
+        "accuracy": null,
+        "macro_f1": null,
+        "note": "baseline — first production model; evaluation metrics not yet captured (run train_scorer.py to populate)"
+      }
+    ]
   },
   "usage": {
     "load": "import pickle\nwith open('scorer_model.pkl','rb') as f:\n    payload = pickle.load(f)\nmodel = payload['model']\nfeature_names = payload['feature_names']",

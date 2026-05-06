@@ -1,14 +1,21 @@
 {
   "model_id": "career_model",
+  "version": "1.0.0",
+  "commit_hash": "cd1d839",
   "description": "TF-IDF + Logistic Regression pipeline that classifies a resume's career field into one of five buckets.",
   "task": "multi-class classification",
   "target_column": "career_label",
+  "package_versions": {
+    "python": "3.13.2",
+    "scikit_learn": "1.8.0"
+  },
   "artifact": {
     "filename": "career_model.pkl",
     "format": "pickle (sklearn.pipeline.Pipeline)",
     "size_bytes": 578029,
     "sha256": "9c678d576096d25b1a602cb285b94ec070371d62841a827753b75ad6564efeab",
-    "created_at": "2026-05-03T20:26:36"
+    "created_at": "2026-05-03T20:26:36",
+    "updated_at": "2026-05-03T20:26:36"
   },
   "companion_artifact": {
     "filename": "career_classes.pkl",
@@ -67,6 +74,50 @@
     "test_split": 0.20,
     "random_state": 42,
     "stratified": true
+  },
+  "evaluation_metrics": {
+    "test_set_size": 683,
+    "accuracy": 0.8507,
+    "macro_precision": 0.8920,
+    "macro_recall": 0.8520,
+    "macro_f1": 0.8600,
+    "weighted_precision": 0.8600,
+    "weighted_recall": 0.8500,
+    "weighted_f1": 0.8500,
+    "per_class": {
+      "business":  {"precision": 0.800, "recall": 0.930, "f1": 0.860, "support": 229},
+      "creative":  {"precision": 0.900, "recall": 0.590, "f1": 0.720, "support": 111},
+      "marketing": {"precision": 1.000, "recall": 1.000, "f1": 1.000, "support": 56},
+      "other":     {"precision": 0.830, "recall": 0.850, "f1": 0.840, "support": 200},
+      "tech":      {"precision": 0.930, "recall": 0.890, "f1": 0.910, "support": 87}
+    },
+    "confusion_matrix": {
+      "labels": ["business", "creative", "marketing", "other", "tech"],
+      "matrix": [
+        [212,  4,  0, 11,  2],
+        [ 26, 66,  0, 18,  1],
+        [  0,  0, 56,  0,  0],
+        [ 24,  3,  0, 170, 3],
+        [  3,  0,  0,  7, 77]
+      ]
+    },
+    "evaluation_script": "training/train_career.py",
+    "results_file": "EVALUATION_RESULTS.md"
+  },
+  "evolution_metrics": {
+    "current_version": "1.0.0",
+    "history": [
+      {
+        "version": "1.0.0",
+        "trained_at": "2026-05-03T20:26:36",
+        "commit_hash": "cd1d839",
+        "accuracy": 0.8507,
+        "macro_f1": 0.8600,
+        "macro_precision": 0.8920,
+        "macro_recall": 0.8520,
+        "note": "baseline — first production model; marketing class gold-label only"
+      }
+    ]
   },
   "usage": {
     "load": "import pickle\nwith open('career_model.pkl','rb') as f:\n    pipeline = pickle.load(f)\nprediction = pipeline.predict([clean_text])[0]",
