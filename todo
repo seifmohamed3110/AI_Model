@@ -1,0 +1,10 @@
+ocr fallback scanned pdfs 
+    fe modules/extractor.py hot law kalam o2lel 3ash8el ocr  
+    lib pytesseract for ocr 
+    {"text":".......","ocr":true}
+
+normliztion(how to work)
+    fix lowercase 
+    remove puntocation
+    collapase white space
+    variants(aware that words and their other name) 

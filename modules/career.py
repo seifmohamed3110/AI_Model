@@ -14,7 +14,7 @@ MODEL_PATH   = os.path.join(BASE_DIR, "models", "career_model.pkl")
 CLASSES_PATH = os.path.join(BASE_DIR, "models", "career_classes.pkl")
 
 # ── Fix broken pickle import (VERY IMPORTANT) ────────────────────────────────
-sys.modules["sklear"] = sklearn
+sys.modules["sklearn"] = sklearn
 
 # ── Load model ───────────────────────────────────────────────────────────────
 with open(MODEL_PATH, "rb") as f:

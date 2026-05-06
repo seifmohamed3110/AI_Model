@@ -131,7 +131,7 @@ def build_resume_result(
     score_result = score_resume(features)
     ats_issues_raw = check_ats(text)
     writing_result = analyze_writing(text)
-    keywords = extract_keywords(text, field=detected_field, limit=12)
+    keywords = extract_keywords(text, top_n=12)
     suggestion_buckets = get_suggestions_detailed(features, detected_field)
 
     # ── Clean output for frontend ────────────────────────────────────────────

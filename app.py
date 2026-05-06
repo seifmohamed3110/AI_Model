@@ -22,11 +22,11 @@ from dotenv import load_dotenv
 from modules.extractor import extract_text
 from modules.results import build_resume_result
 
-load_dotenv()
+load_dotenv()# hot try exception
 
 app = Flask(__name__)
 
-app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024# hot try exception
 
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
 
@@ -79,13 +79,21 @@ def analyze():
         if len(text.strip()) < 50:
             return jsonify({"error": "Could not extract enough text from file"}), 422
 
-        result = build_resume_result(
-            text=text,
-            user_field=user_field,
-            jd_text=jd_text,
-        )
-
-        return jsonify(result), 200
+        try:
+            result = build_resume_result(
+                text=text,
+                user_field=user_field,
+                jd_text=jd_text,
+            )
+            return jsonify(result), 200
+        except Exception as e:
+            import traceback
+            print(traceback.format_exc())
+            return jsonify({
+                "error": "Analysis logic failed",
+                "details": str(e),
+                "trace": traceback.format_exc()
+            }), 500
 
     finally:
         try:
@@ -97,4 +105,4 @@ def analyze():
 if __name__ == "__main__":
     debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
     port = int(os.getenv("PORT", 5001))
-    app.run(debug=debug, port=port, use_reloader=False)
+    app.run(debug=debug, port=5001, use_reloader=False)# hot try exception

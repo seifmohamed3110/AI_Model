@@ -2,25 +2,40 @@
 training/validate_data.py
 
 Responsibilities:
-- Validate slim_resumes_with_strong.csv
-- Show dataset size, columns, missing values, field distribution, and grade distribution
-- Check manual review progress from data/manual_review_checklist.csv
-- Warn if class distribution or manual review progress looks unhealthy
+- Validate labeled_resumes.csv (output of label_data.py)
+- Optionally validate manual_gold_dataset.csv
+- Show dataset size, columns, missing values, career label distribution,
+  quality label distribution, and sub-score distributions
+- Warn if class distribution or data integrity looks unhealthy
+
+Column contract (matches manual_gold_dataset.csv):
+    cv_text           — resume plain text
+    career_label      — tech | business | creative | other
+    quality_label     — 0 | 1 | 2
+    ats_score         — 0 | 1 | 2   (optional, present in gold only)
+    writing_score     — 0 | 1 | 2   (optional, present in gold only)
+    achievement_score — 0 | 1 | 2   (optional, present in gold only)
+    relevance_score   — 0 | 1 | 2   (optional, present in gold only)
+    final_score       — 0-100       (optional, present in gold only)
 """
 
 import os
 import pandas as pd
 
+BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_PATH      = os.path.join(BASE_DIR, "data", "labeled_resumes.csv")
+GOLD_PATH      = os.path.join(BASE_DIR, "data", "manual_gold_dataset.csv")
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_PATH = os.path.join(BASE_DIR, "data", "slim_resumes_with_strong.csv")
-MANUAL_PATH = os.path.join(BASE_DIR, "data", "manual_review_checklist.csv")
+QUALITY_NAMES  = {0: "weak", 1: "average", 2: "strong"}
+VALID_CAREERS  = {"tech", "business", "creative", "other"}
+SUB_SCORE_COLS = ["ats_score", "writing_score", "achievement_score", "relevance_score"]
 
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def print_distribution(series: pd.Series, title: str) -> None:
-    counts = series.value_counts(dropna=False)
+    counts      = series.value_counts(dropna=False)
     percentages = (counts / len(series) * 100).round(2)
-
     print(title)
     for label, count in counts.items():
         pct = percentages[label]
@@ -28,107 +43,135 @@ def print_distribution(series: pd.Series, title: str) -> None:
     print()
 
 
-def main() -> None:
-    print("=== Dataset Validation ===")
+def validate_file(path: str, label: str, encoding: str = "utf-8") -> None:
+    print(f"=== {label} ===")
 
-    if not os.path.exists(DATA_PATH):
-        print(f"ERROR: Dataset not found: {DATA_PATH}")
+    if not os.path.exists(path):
+        print(f"ERROR: File not found: {path}\n")
         return
 
-    df = pd.read_csv(DATA_PATH, dtype=str, encoding="utf-8", on_bad_lines="skip")
+    df = pd.read_csv(path, dtype=str, encoding=encoding, on_bad_lines="skip")
     df.columns = df.columns.str.strip()
 
-    print(f"Dataset: {os.path.basename(DATA_PATH)}")
-    print(f"Rows: {len(df)}")
+    print(f"File:    {os.path.basename(path)}")
+    print(f"Rows:    {len(df)}")
     print(f"Columns: {list(df.columns)}\n")
 
-    # ── Missing values check ────────────────────────────────────────────────
-    important_cols = ["Resume_str", "field", "grade"]
-    missing_summary = {}
-
-    for col in important_cols:
+    # ── Required columns check ────────────────────────────────────────────────
+    required_cols = ["cv_text", "career_label", "quality_label"]
+    print("Required column check:")
+    all_present = True
+    for col in required_cols:
         if col in df.columns:
-            missing_summary[col] = int(df[col].isna().sum())
+            missing = int(df[col].isna().sum())
+            print(f"  {col}: {missing} missing")
         else:
-            missing_summary[col] = "MISSING COLUMN"
-
-    print("Important column check:")
-    for col, val in missing_summary.items():
-        print(f"  {col}: {val}")
+            print(f"  {col}: MISSING COLUMN ⚠")
+            all_present = False
     print()
 
-    # ── Basic cleaning view ─────────────────────────────────────────────────
-    if "Resume_str" in df.columns:
-        valid_resume_mask = df["Resume_str"].astype(str).str.strip().str.len() > 50
-        print(f"Usable resumes (>50 chars): {int(valid_resume_mask.sum())}/{len(df)}")
+    if not all_present:
+        print("WARNING: Cannot continue validation — required columns missing.\n")
+        return
+
+    # ── Usable rows ───────────────────────────────────────────────────────────
+    valid_mask = df["cv_text"].astype(str).str.strip().str.len() > 50
+    print(f"Usable resumes (cv_text > 50 chars): {int(valid_mask.sum())}/{len(df)}\n")
+
+    df = df[valid_mask].copy()
+
+    # ── Career label distribution ─────────────────────────────────────────────
+    df["career_label"] = df["career_label"].astype(str).str.strip().str.lower()
+    print_distribution(df["career_label"], "Career label distribution:")
+
+    unknown_careers = set(df["career_label"].unique()) - VALID_CAREERS
+    if unknown_careers:
+        print(f"WARNING: Unknown career labels found: {unknown_careers}\n")
+
+    low_careers = df["career_label"].value_counts()
+    low_careers = low_careers[low_careers < 10]
+    if not low_careers.empty:
+        print("WARNING: Some career labels have very few samples (< 10):")
+        for lbl, cnt in low_careers.items():
+            print(f"  {lbl}: {cnt}")
         print()
 
-    # ── Field distribution ──────────────────────────────────────────────────
-    if "field" in df.columns:
-        print_distribution(df["field"], "Field distribution:")
+    # ── Quality label distribution ────────────────────────────────────────────
+    df["quality_label"] = pd.to_numeric(df["quality_label"], errors="coerce")
+    bad_quality = df["quality_label"].isna().sum()
+    if bad_quality:
+        print(f"WARNING: {bad_quality} rows have non-numeric quality_label.\n")
+    df = df.dropna(subset=["quality_label"])
+    df["quality_label"] = df["quality_label"].astype(int)
 
-        field_counts = df["field"].value_counts()
-        low_fields = field_counts[field_counts < 50]
-        if not low_fields.empty:
-            print("WARNING: Some field classes are very small:")
-            for label, count in low_fields.items():
-                print(f"  {label}: {count}")
-            print()
+    quality_display = df["quality_label"].map(
+        lambda x: f"{x} ({QUALITY_NAMES.get(x, '?')})"
+    )
+    print_distribution(quality_display, "Quality label distribution:")
 
-    # ── Grade distribution ──────────────────────────────────────────────────
-    if "grade" in df.columns:
-        df["grade"] = pd.to_numeric(df["grade"], errors="coerce")
-        print_distribution(df["grade"], "Grade distribution:")
+    grade_counts = df["quality_label"].value_counts()
+    low_grades   = grade_counts[grade_counts < 10]
+    if not low_grades.empty:
+        print("WARNING: Some quality labels have very few samples (< 10):")
+        for lbl, cnt in low_grades.items():
+            print(f"  grade {lbl} ({QUALITY_NAMES.get(lbl, '?')}): {cnt}")
+        print()
 
-        grade_counts = df["grade"].value_counts()
-        low_grades = grade_counts[grade_counts < 50]
-        if not low_grades.empty:
-            print("WARNING: Some grade classes are very small:")
-            for label, count in low_grades.items():
-                print(f"  grade {label}: {count}")
-            print()
+    # ── Sub-score distributions (present in gold dataset only) ────────────────
+    present_sub = [c for c in SUB_SCORE_COLS if c in df.columns]
+    if present_sub:
+        print("Sub-score distributions (0=low / 1=mid / 2=high):")
+        for col in present_sub:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+            counts = df[col].value_counts(dropna=False).sort_index()
+            print(f"  {col}: {dict(counts)}")
+        print()
 
-    # ── Manual review progress ──────────────────────────────────────────────
-    if os.path.exists(MANUAL_PATH):
-        manual = pd.read_csv(MANUAL_PATH, dtype=str, encoding="utf-8", on_bad_lines="skip")
-        manual.columns = manual.columns.str.strip()
+    if "final_score" in df.columns:
+        df["final_score"] = pd.to_numeric(df["final_score"], errors="coerce")
+        print("final_score statistics:")
+        print(df["final_score"].describe().round(2).to_string())
+        print()
 
-        print("=== Manual Review Progress ===")
-        required_manual_cols = ["resume_id", "career_label", "quality_label", "status"]
-        missing_manual_cols = [c for c in required_manual_cols if c not in manual.columns]
+    # ── Text length sanity ────────────────────────────────────────────────────
+    df["_text_len"] = df["cv_text"].astype(str).str.split().str.len()
+    print("Word count statistics per resume:")
+    print(df["_text_len"].describe().round(1).to_string())
+    print()
 
-        if missing_manual_cols:
-            print(f"WARNING: manual_review_checklist.csv is missing columns: {missing_manual_cols}")
-        else:
-            status_series = manual["status"].astype(str).str.strip().str.lower()
-            done_mask = status_series == "done"
-            done = int(done_mask.sum())
-            total = len(manual)
+    print(f"=== Validation Complete: {label} ===\n")
 
-            print(f"Reviewed: {done}/{total}")
 
-            if done > 0:
-                reviewed = manual[done_mask].copy()
+# ── Main ──────────────────────────────────────────────────────────────────────
 
-                career_filled = int(
-                    reviewed["career_label"].astype(str).str.strip().replace({"": pd.NA}).notna().sum()
-                )
-                quality_filled = int(
-                    reviewed["quality_label"].astype(str).str.strip().replace({"": pd.NA}).notna().sum()
-                )
+def main() -> None:
+    # Validate auto-labeled training data
+    validate_file(DATA_PATH, "Labeled Resumes (auto-scored)", encoding="utf-8")
 
-                print(f"Reviewed rows with career_label filled: {career_filled}/{done}")
-                print(f"Reviewed rows with quality_label filled: {quality_filled}/{done}")
+    # Validate manual gold dataset if present
+    if os.path.exists(GOLD_PATH):
+        validate_file(GOLD_PATH, "Manual Gold Dataset", encoding="latin-1")
 
-            if done < 20:
-                print("WARNING: Target not met: need at least 20 manually reviewed resumes.")
-            else:
-                print("OK: Manual review minimum target met.")
+        # Cross-check: confirm both files share the same column schema
+        df_main = pd.read_csv(DATA_PATH, nrows=1, dtype=str, encoding="utf-8")
+        df_gold = pd.read_csv(GOLD_PATH, nrows=1, dtype=str, encoding="latin-1")
+        df_main.columns = df_main.columns.str.strip()
+        df_gold.columns = df_gold.columns.str.strip()
+
+        shared_cols  = set(df_main.columns) & set(df_gold.columns)
+        only_in_main = set(df_main.columns) - set(df_gold.columns)
+        only_in_gold = set(df_gold.columns) - set(df_main.columns)
+
+        print("=== Schema Comparison ===")
+        print(f"Shared columns:         {sorted(shared_cols)}")
+        if only_in_main:
+            print(f"Only in labeled data:   {sorted(only_in_main)}")
+        if only_in_gold:
+            print(f"Only in gold dataset:   {sorted(only_in_gold)}")
         print()
     else:
-        print("WARNING: manual_review_checklist.csv not found.\n")
-
-    print("=== Validation Complete ===")
+        print(f"INFO: Manual gold dataset not found at: {GOLD_PATH}")
+        print("      Skipping gold validation.\n")
 
 
 if __name__ == "__main__":

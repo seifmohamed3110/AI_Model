@@ -1,0 +1,30 @@
+{
+  "model_id": "career_classes",
+  "description": "Companion artifact to career_model.pkl. Stores the ordered class label list that matches pipeline.classes_ so downstream code can resolve predicted indices to human-readable names without re-loading the full pipeline.",
+  "task": "label registry",
+  "artifact": {
+    "filename": "career_classes.pkl",
+    "format": "pickle (Python list of str)",
+    "size_bytes": 65,
+    "sha256": "ac17b6a8efd5cff78eb8b7159b1be43adc65fd146caf059e7eb198abc8cdc135",
+    "created_at": "2026-05-03T20:26:35"
+  },
+  "classes": ["business", "creative", "marketing", "other", "tech"],
+  "num_classes": 5,
+  "index_map": {
+    "0": "business",
+    "1": "creative",
+    "2": "marketing",
+    "3": "other",
+    "4": "tech"
+  },
+  "ordering": "alphabetical (matches sklearn LogisticRegression.classes_ default)",
+  "parent_model": "career_model.pkl",
+  "usage": {
+    "load": "import pickle\nwith open('career_classes.pkl','rb') as f:\n    classes = pickle.load(f)\nlabel = classes[predicted_index]"
+  },
+  "notes": [
+    "Always load this file alongside career_model.pkl to guarantee index alignment",
+    "Re-generate this file whenever career_model.pkl is retrained — class order may shift if new labels are added"
+  ]
+}

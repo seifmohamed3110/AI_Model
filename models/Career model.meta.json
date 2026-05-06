@@ -1,0 +1,80 @@
+{
+  "model_id": "career_model",
+  "description": "TF-IDF + Logistic Regression pipeline that classifies a resume's career field into one of five buckets.",
+  "task": "multi-class classification",
+  "target_column": "career_label",
+  "artifact": {
+    "filename": "career_model.pkl",
+    "format": "pickle (sklearn.pipeline.Pipeline)",
+    "size_bytes": 578029,
+    "sha256": "9c678d576096d25b1a602cb285b94ec070371d62841a827753b75ad6564efeab",
+    "created_at": "2026-05-03T20:26:36"
+  },
+  "companion_artifact": {
+    "filename": "career_classes.pkl",
+    "description": "Ordered list of class labels matching pipeline.classes_",
+    "size_bytes": 65,
+    "sha256": "ac17b6a8efd5cff78eb8b7159b1be43adc65fd146caf059e7eb198abc8cdc135"
+  },
+  "classes": ["business", "creative", "marketing", "other", "tech"],
+  "num_classes": 5,
+  "input": {
+    "type": "raw text",
+    "column": "cv_text",
+    "min_length_chars": 50,
+    "preprocessing": "lowercase → strip URLs → remove non-alphanumeric → normalize whitespace"
+  },
+  "pipeline": [
+    {
+      "step": "tfidf",
+      "class": "sklearn.feature_extraction.text.TfidfVectorizer",
+      "params": {
+        "max_features": 7000,
+        "ngram_range": [1, 2],
+        "sublinear_tf": true,
+        "min_df": 3,
+        "max_df": 0.9,
+        "stop_words": "english"
+      },
+      "fitted_vocabulary_size": 7000
+    },
+    {
+      "step": "clf",
+      "class": "sklearn.linear_model.LogisticRegression",
+      "params": {
+        "C": 4.0,
+        "max_iter": 600,
+        "solver": "lbfgs",
+        "random_state": 42
+      },
+      "convergence": {
+        "iterations_run": 59,
+        "converged": true
+      }
+    }
+  ],
+  "top_discriminative_terms_per_class": {
+    "business":  ["consultant", "hr", "finance", "accountant", "business development"],
+    "creative":  ["designer", "digital", "arts", "designer summary", "creative"],
+    "marketing": ["marketing", "google", "seo", "content", "analytics"],
+    "other":     ["construction", "advocate", "teacher", "chef", "healthcare"],
+    "tech":      ["engineering", "information technology", "information", "technology", "engineering manager"]
+  },
+  "training": {
+    "source_script": "training/train_career.py",
+    "data_file": "data/labeled_resumes.csv",
+    "gold_merge": "data/manual_gold_dataset.csv (merged when present)",
+    "test_split": 0.20,
+    "random_state": 42,
+    "stratified": true
+  },
+  "usage": {
+    "load": "import pickle\nwith open('career_model.pkl','rb') as f:\n    pipeline = pickle.load(f)\nprediction = pipeline.predict([clean_text])[0]",
+    "predict_proba": "pipeline.predict_proba([clean_text])[0]  # returns array of 5 class probabilities"
+  },
+  "known_limitations": [
+    "creative and other classes are underrepresented — precision may be lower for these labels",
+    "marketing was not present in the original Kaggle dataset; it relies on gold-label examples only",
+    "model does not use resume structure, only bag-of-words signal"
+  ]
+}

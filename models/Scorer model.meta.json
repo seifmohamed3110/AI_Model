@@ -1,0 +1,115 @@
+{
+  "model_id": "scorer_model",
+  "description": "XGBoost classifier that predicts a resume's quality grade (weak / average / strong) from 27 hand-engineered structural and linguistic features.",
+  "task": "multi-class classification",
+  "target_column": "quality_label",
+  "label_map": {
+    "0": "weak",
+    "1": "average",
+    "2": "strong"
+  },
+  "grade_thresholds": {
+    "weak":    "final_score < 40",
+    "average": "final_score 40–69",
+    "strong":  "final_score >= 70"
+  },
+  "artifact": {
+    "filename": "scorer_model.pkl",
+    "format": "pickle (dict with keys: model, feature_names)",
+    "size_bytes": 1525454,
+    "sha256": "0a2bbaf634fe6dccd664792676aa311ce3a9970a87a45e28b4130f71e01eff97",
+    "created_at": "2026-05-03T20:26:46"
+  },
+  "input": {
+    "type": "feature vector",
+    "source_column": "cv_text",
+    "extractor": "modules/features.py → extract_features(text, career_label)",
+    "num_features": 27
+  },
+  "features": {
+    "text_volume": ["word_count", "char_count", "line_count", "avg_line_length"],
+    "contact_info": ["has_email", "has_phone", "has_linkedin", "has_github", "has_portfolio"],
+    "structure": ["section_count", "has_summary", "has_experience", "has_education",
+                  "has_skills", "has_certifications", "has_projects", "has_achievements"],
+    "writing_quality": ["bullet_count", "avg_bullet_length", "first_person_count",
+                        "filler_count", "action_verb_count"],
+    "field_keywords": ["tech_skill_count", "marketing_skill_count",
+                       "creative_skill_count", "business_skill_count"],
+    "impact": ["quantification_count"]
+  },
+  "feature_importances": {
+    "quantification_count":  0.17074,
+    "char_count":            0.12522,
+    "word_count":            0.10799,
+    "action_verb_count":     0.08439,
+    "has_education":         0.06176,
+    "section_count":         0.05965,
+    "first_person_count":    0.04433,
+    "has_portfolio":         0.03756,
+    "avg_bullet_length":     0.03543,
+    "filler_count":          0.03477,
+    "business_skill_count":  0.03469,
+    "bullet_count":          0.02818,
+    "avg_line_length":       0.02771,
+    "creative_skill_count":  0.02607,
+    "tech_skill_count":      0.02549,
+    "line_count":            0.02518,
+    "has_phone":             0.02320,
+    "marketing_skill_count": 0.02306,
+    "has_linkedin":          0.02206,
+    "has_experience":        0.00249,
+    "has_email":             0.0,
+    "has_github":            0.0,
+    "has_summary":           0.0,
+    "has_skills":            0.0,
+    "has_certifications":    0.0,
+    "has_projects":          0.0,
+    "has_achievements":      0.0
+  },
+  "top_predictive_features": [
+    "quantification_count (17.1%) — most impactful; quantified achievements strongly predict strong grade",
+    "char_count + word_count (23.3% combined) — resume length is a strong proxy for completeness",
+    "action_verb_count (8.4%) — verb-driven writing correlates with higher grades",
+    "has_education (6.2%) — presence of education section reliably separates weak from average",
+    "section_count (6.0%) — structural completeness matters across all classes"
+  ],
+  "zero_importance_features": [
+    "has_email", "has_github", "has_summary", "has_skills",
+    "has_certifications", "has_projects", "has_achievements"
+  ],
+  "zero_importance_note": "These boolean flags likely have near-zero variance in the training data (most resumes include them). Consider dropping in future iterations to reduce noise.",
+  "model": {
+    "class": "xgboost.XGBClassifier",
+    "objective": "multi:softprob",
+    "num_classes": 3,
+    "params": {
+      "n_estimators": 250,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "subsample": 0.85,
+      "colsample_bytree": 0.85,
+      "eval_metric": "mlogloss",
+      "random_state": 42,
+      "n_jobs": 1
+    }
+  },
+  "training": {
+    "source_script": "training/train_scorer.py",
+    "data_file": "data/labeled_resumes.csv",
+    "gold_merge": "data/manual_gold_dataset.csv (merged when present)",
+    "test_split": 0.20,
+    "random_state": 42,
+    "stratified": true,
+    "class_imbalance_handling": "inverse-frequency sample weights per training example"
+  },
+  "usage": {
+    "load": "import pickle\nwith open('scorer_model.pkl','rb') as f:\n    payload = pickle.load(f)\nmodel = payload['model']\nfeature_names = payload['feature_names']",
+    "predict": "from modules.features import extract_features\nfeats = extract_features(cv_text, career_label)\nimport pandas as pd\nX = pd.DataFrame([feats])[feature_names]\npredicted_label = model.predict(X)[0]   # 0=weak, 1=average, 2=strong\nproba = model.predict_proba(X)[0]       # [P(weak), P(average), P(strong)]"
+  },
+  "known_limitations": [
+    "7 features have zero importance — likely due to low variance; consider removing in v2",
+    "model is field-agnostic at inference time unless career_label is passed to extract_features",
+    "scores are calibrated against rule-based labels, not a held-out human evaluation set",
+    "creative class has very few samples; quality predictions for creative resumes may be unreliable"
+  ]
+}

@@ -4,14 +4,12 @@ modules/features.py
 Responsibilities:
 - Take clean resume text
 - Return a flat dictionary of numeric features
-- Provide keyword extraction helpers for final result generation
 - Used by scorer.py (ML input) and suggestions.py (logic input)
 
 No Flask. No ML. No file I/O.
 """
 
 import re
-from typing import List, Dict
 
 
 # ── Keyword lists ────────────────────────────────────────────────────────────
@@ -73,133 +71,22 @@ SECTION_HEADINGS = [
     "references", "volunteer", "internship",
 ]
 
-FIELD_KEYWORDS = {
-    "tech": TECH_SKILLS,
-    "marketing": MARKETING_SKILLS,
-    "creative": CREATIVE_SKILLS,
-    "business": BUSINESS_SKILLS,
-}
-
 
 # ── Helper functions ─────────────────────────────────────────────────────────
-
-def _keyword_present(text: str, keyword: str) -> bool:
-    """Return True if the keyword appears as a whole token/phrase."""
-    return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text))
-
 
 def _count_keywords(text: str, keywords: list) -> int:
     """Count how many keywords from the list appear in the text."""
     count = 0
     for kw in keywords:
-        if _keyword_present(text, kw):
+        if re.search(r"\b" + re.escape(kw) + r"\b", text):
             count += 1
     return count
-
-
-def _matched_keywords(text: str, keywords: list) -> List[str]:
-    """Return all matched keywords from the provided list."""
-    matched = [kw for kw in keywords if _keyword_present(text, kw)]
-    return sorted(set(matched), key=lambda x: (-len(x.split()), -len(x), x))
-
-
-def _display_keyword(keyword: str) -> str:
-    """Format keywords for cleaner display in API results."""
-    special_map = {
-        "aws": "AWS",
-        "gcp": "GCP",
-        "sql": "SQL",
-        "nosql": "NoSQL",
-        "api": "API",
-        "rest": "REST",
-        "graphql": "GraphQL",
-        "javascript": "JavaScript",
-        "typescript": "TypeScript",
-        "c++": "C++",
-        "c#": "C#",
-        "tensorflow": "TensorFlow",
-        "pytorch": "PyTorch",
-        "scikit-learn": "scikit-learn",
-        "numpy": "NumPy",
-        "django": "Django",
-        "flask": "Flask",
-        "fastapi": "FastAPI",
-        "mongodb": "MongoDB",
-        "postgresql": "PostgreSQL",
-        "mysql": "MySQL",
-        "redis": "Redis",
-        "seo": "SEO",
-        "sem": "SEM",
-        "ppc": "PPC",
-        "roi": "ROI",
-        "kpi": "KPI",
-        "crm": "CRM",
-        "ux": "UX",
-        "ui": "UI",
-        "ci/cd": "CI/CD",
-        "devops": "DevOps",
-        "linkedin": "LinkedIn",
-        "github": "GitHub",
-    }
-    if keyword in special_map:
-        return special_map[keyword]
-    return " ".join(part.capitalize() for part in keyword.split())
 
 
 def _is_bullet_line(line: str) -> bool:
     """Return True if the line starts with a bullet-like character or dash."""
     stripped = line.strip()
     return bool(re.match(r"^[\•\-\*\–\—\►\▪\○\●]", stripped))
-
-
-# ── Keyword extraction helpers ───────────────────────────────────────────────
-
-def extract_keyword_groups(text: str) -> Dict[str, List[str]]:
-    """
-    Return matched keywords grouped by field.
-    Useful for strengths, improvements, and final API output.
-    """
-    text_lower = text.lower()
-
-    grouped = {
-        "tech": [_display_keyword(k) for k in _matched_keywords(text_lower, TECH_SKILLS)],
-        "marketing": [_display_keyword(k) for k in _matched_keywords(text_lower, MARKETING_SKILLS)],
-        "creative": [_display_keyword(k) for k in _matched_keywords(text_lower, CREATIVE_SKILLS)],
-        "business": [_display_keyword(k) for k in _matched_keywords(text_lower, BUSINESS_SKILLS)],
-    }
-
-    return grouped
-
-
-def extract_keywords(text: str, field: str = None, limit: int = 12) -> List[str]:
-    """
-    Return the most relevant detected keywords from the resume.
-
-    If a field is provided and valid, prioritize that field first,
-    then fill remaining slots from other matched keywords.
-    """
-    text_lower = text.lower()
-    grouped = extract_keyword_groups(text)
-
-    all_keywords = []
-    seen = set()
-
-    normalized_field = (field or "").strip().lower()
-    if normalized_field in grouped:
-        for kw in grouped[normalized_field]:
-            if kw not in seen:
-                all_keywords.append(kw)
-                seen.add(kw)
-
-    for bucket in ["tech", "marketing", "creative", "business"]:
-        if bucket == normalized_field:
-            continue
-        for kw in grouped[bucket]:
-            if kw not in seen:
-                all_keywords.append(kw)
-                seen.add(kw)
-
-    return all_keywords[:limit]
 
 
 # ── Main function ─────────────────────────────────────────────────────────────
@@ -247,13 +134,13 @@ def extract_features(text: str) -> dict:
         if line_clean in SECTION_HEADINGS and len(line.strip()) < 40:
             found_sections.append(line_clean)
 
-    section_count = len(found_sections)
-    has_summary = int(any(s in found_sections for s in ["summary", "objective", "profile"]))
-    has_experience = int(any(s in found_sections for s in ["experience", "work experience", "employment", "internship"]))
-    has_education = int("education" in found_sections)
-    has_skills = int("skills" in found_sections)
+    section_count    = len(found_sections)
+    has_summary      = int(any(s in found_sections for s in ["summary", "objective", "profile"]))
+    has_experience   = int(any(s in found_sections for s in ["experience", "work experience", "employment", "internship"]))
+    has_education    = int("education" in found_sections)
+    has_skills       = int("skills" in found_sections)
     has_certifications = int("certifications" in found_sections)
-    has_projects = int("projects" in found_sections)
+    has_projects     = int("projects" in found_sections)
     has_achievements = int(any(s in found_sections for s in ["achievements", "awards"]))
 
     # ── Bullet points ────────────────────────────────────────────────────────
@@ -264,7 +151,7 @@ def extract_features(text: str) -> dict:
         if bullet_count > 0 else 0
     )
 
-    # ── Writing quality signals ──────────────────────────────────────────────
+    # ── Writing quality signals ───────────────────────────────────────────────
     first_person_count = len(re.findall(
         r"\b(i|me|my|myself)\b", text_lower
     ))
@@ -273,48 +160,47 @@ def extract_features(text: str) -> dict:
         for phrase in FILLER_PHRASES
     )
 
-    # ── Field skill counts ───────────────────────────────────────────────────
-    tech_skill_count = _count_keywords(text_lower, TECH_SKILLS)
-    marketing_skill_count = _count_keywords(text_lower, MARKETING_SKILLS)
-    creative_skill_count = _count_keywords(text_lower, CREATIVE_SKILLS)
-    business_skill_count = _count_keywords(text_lower, BUSINESS_SKILLS)
+    # ── Field skill counts ────────────────────────────────────────────────────
+    tech_skill_count       = _count_keywords(text_lower, TECH_SKILLS)
+    marketing_skill_count  = _count_keywords(text_lower, MARKETING_SKILLS)
+    creative_skill_count   = _count_keywords(text_lower, CREATIVE_SKILLS)
+    business_skill_count   = _count_keywords(text_lower, BUSINESS_SKILLS)
 
-    # ── Impact signals ───────────────────────────────────────────────────────
+    # ── Impact signals ────────────────────────────────────────────────────────
     quantification_count = len(re.findall(
-        r"\b\d+\s*(%|percent|x|times|million|billion|k\b|users|customers|revenue|hours|days|months)",
-        text_lower
+        r"\b\d+\s*(%|percent|x|times|million|billion|k\b|users|customers|revenue|hours|days|months)", text_lower
     ))
     action_verb_count = _count_keywords(text_lower, ACTION_VERBS)
 
-    # ── Assemble and return ──────────────────────────────────────────────────
+    # ── Assemble and return ───────────────────────────────────────────────────
     return {
-        "word_count": word_count,
-        "char_count": char_count,
-        "line_count": line_count,
-        "avg_line_length": round(avg_line_length, 2),
-        "has_email": has_email,
-        "has_phone": has_phone,
-        "has_linkedin": has_linkedin,
-        "has_github": has_github,
-        "has_portfolio": has_portfolio,
-        "section_count": section_count,
-        "has_summary": has_summary,
-        "has_experience": has_experience,
-        "has_education": has_education,
-        "has_skills": has_skills,
-        "has_certifications": has_certifications,
-        "has_projects": has_projects,
-        "has_achievements": has_achievements,
-        "bullet_count": bullet_count,
-        "avg_bullet_length": round(avg_bullet_length, 2),
-        "first_person_count": first_person_count,
-        "filler_count": filler_count,
-        "tech_skill_count": tech_skill_count,
+        "word_count":            word_count,
+        "char_count":            char_count,
+        "line_count":            line_count,
+        "avg_line_length":       round(avg_line_length, 2),
+        "has_email":             has_email,
+        "has_phone":             has_phone,
+        "has_linkedin":          has_linkedin,
+        "has_github":            has_github,
+        "has_portfolio":         has_portfolio,
+        "section_count":         section_count,
+        "has_summary":           has_summary,
+        "has_experience":        has_experience,
+        "has_education":         has_education,
+        "has_skills":            has_skills,
+        "has_certifications":    has_certifications,
+        "has_projects":          has_projects,
+        "has_achievements":      has_achievements,
+        "bullet_count":          bullet_count,
+        "avg_bullet_length":     round(avg_bullet_length, 2),
+        "first_person_count":    first_person_count,
+        "filler_count":          filler_count,
+        "tech_skill_count":      tech_skill_count,
         "marketing_skill_count": marketing_skill_count,
-        "creative_skill_count": creative_skill_count,
-        "business_skill_count": business_skill_count,
-        "quantification_count": quantification_count,
-        "action_verb_count": action_verb_count,
+        "creative_skill_count":  creative_skill_count,
+        "business_skill_count":  business_skill_count,
+        "quantification_count":  quantification_count,
+        "action_verb_count":     action_verb_count,
     }
 
 
@@ -340,3 +226,28 @@ def detect_content_gaps(features: dict, field: str) -> dict:
         gaps["no_portfolio"] = not bool(features.get("has_portfolio", 0))
 
     return gaps
+def extract_keywords(text: str, top_n: int = 10) -> list:
+    """Extract top N keywords from text based on frequency."""
+    from collections import Counter
+    
+    # Convert to lowercase and find words (minimum 3 characters)
+    words = re.findall(r"\b[a-zA-Z]{3,}\b", text.lower())
+    
+    # Common stop words to filter out
+    stop_words = {
+        "the", "and", "for", "with", "from", "are", "was", "were",
+        "have", "has", "had", "but", "not", "you", "your", "our",
+        "this", "that", "they", "them", "their", "will", "would",
+        "could", "should", "may", "might", "also", "very", "just",
+        "what", "which", "when", "where", "who", "whom", "about",
+        "than", "then", "there", "their", "can", "did", "does"
+    }
+    
+    # Filter out stop words and short words
+    keywords = [word for word in words if word not in stop_words]
+    
+    # Count frequencies
+    keyword_counts = Counter(keywords)
+    
+    # Return top N keywords
+    return [word for word, count in keyword_counts.most_common(top_n)]
